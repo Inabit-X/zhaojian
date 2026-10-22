@@ -1,0 +1,21 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = [".venv", "alembic/versions"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.lint.per-file-ignores]
+"alembic/env.py" = ["E402"]
+# 关系注解必须保留引号：目标类仅在 TYPE_CHECKING 下导入，
+# 去掉引号会让 SQLAlchemy 在运行时解析注解失败。
+"app/db/models/*.py" = ["UP037"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-q"
+markers = [
+    "integration: 需要真实 PostgreSQL + pgvector 的集成测试；数据库不可用时自动 skip",
+]

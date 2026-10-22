@@ -1,0 +1,74 @@
+name: own_partner
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-own_partner}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-own_partner_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-own_partner}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-own_partner} -d ${POSTGRES_DB:-own_partner}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+    env_file:
+      - .env
+    environment:
+      # 容器内通过服务名访问数据库，覆盖 .env 中的 localhost 配置
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-own_partner}:${POSTGRES_PASSWORD:-own_partner_dev}@db:5432/${POSTGRES_DB:-own_partner}
+      REDIS_URL: redis://redis:6379/0
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ---------- 以下为可选异步任务组件，默认不启动 ----------
+  # 启用：docker compose --profile async up -d
+  redis:
+    image: redis:7-alpine
+    profiles: ["async"]
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    restart: unless-stopped
+
+  worker:
+    build:
+      context: ./backend
+    command: ["arq", "app.workers.settings.WorkerSettings"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-own_partner}:${POSTGRES_PASSWORD:-own_partner_dev}@db:5432/${POSTGRES_DB:-own_partner}
+      REDIS_URL: redis://redis:6379/0
+    profiles: ["async"]
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  # ---------- 前端（批次 5 生成后加入）----------
+  # frontend:
+  #   build: ./frontend
+  #   ports: ["8080:80"]
+  #   depends_on: [backend]
+
+volumes:
+  pgdata:
